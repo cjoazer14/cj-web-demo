@@ -24,18 +24,24 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
+      - name: Set variables
+        run: |
+          echo "IMAGE_TAG=${GITHUB_RUN_NUMBER}" >> $GITHUB_ENV
+          echo "ECR_REGISTRY=${{ steps.login-ecr.outputs.registry }}" >> $GITHUB_ENV
+
       - name: Build Docker image
         run: |
-          IMAGE_TAG=${{ github.run_number }}
-          docker build -t cj-web:$IMAGE_TAG .
-          docker tag cj-web:$IMAGE_TAG ${{ secrets.ECR_REGISTRY }}/cj-web:$IMAGE_TAG
-          docker tag cj-web:$IMAGE_TAG ${{ secrets.ECR_REGISTRY }}/cj-web:latest
+          docker build -t cj-web:${IMAGE_TAG} .
+
+      - name: Tag Docker image
+        run: |
+          docker tag cj-web:${IMAGE_TAG} ${ECR_REGISTRY}/cj-web:${IMAGE_TAG}
+          docker tag cj-web:${IMAGE_TAG} ${ECR_REGISTRY}/cj-web:latest
 
       - name: Push to ECR
         run: |
-          IMAGE_TAG=${{ github.run_number }}
-          docker push ${{ secrets.ECR_REGISTRY }}/cj-web:$IMAGE_TAG
-          docker push ${{ secrets.ECR_REGISTRY }}/cj-web:latest
+          docker push ${ECR_REGISTRY}/cj-web:${IMAGE_TAG}
+          docker push ${ECR_REGISTRY}/cj-web:latest
 
   deploy:
     needs: build
@@ -50,6 +56,6 @@ jobs:
           key: ${{ secrets.EC2_KEY }}
           script: |
             kubectl set image deployment/cj-web \
-            cj-web=${{ secrets.ECR_REGISTRY }}/cj-web:latest
+            cj-web=${{ steps.login-ecr.outputs.registry }}/cj-web:latest
 
             kubectl rollout status deployment/cj-web
