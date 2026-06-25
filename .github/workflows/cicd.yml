@@ -1,0 +1,56 @@
+name: CJ CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-southeast-2
+
+      - name: Login to ECR
+        run: |
+          aws ecr get-login-password --region ap-southeast-2 | \
+          docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}
+
+      - name: Build Docker image
+        run: |
+          IMAGE_TAG=${{ github.run_number }}
+          docker build -t cj-web:$IMAGE_TAG .
+          docker tag cj-web:$IMAGE_TAG ${{ secrets.ECR_REGISTRY }}/cj-web:$IMAGE_TAG
+          docker tag cj-web:$IMAGE_TAG ${{ secrets.ECR_REGISTRY }}/cj-web:latest
+
+      - name: Push to ECR
+        run: |
+          IMAGE_TAG=${{ github.run_number }}
+          docker push ${{ secrets.ECR_REGISTRY }}/cj-web:$IMAGE_TAG
+          docker push ${{ secrets.ECR_REGISTRY }}/cj-web:latest
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to Kubernetes via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ec2-user
+          key: ${{ secrets.EC2_KEY }}
+          script: |
+            kubectl set image deployment/cj-web \
+            cj-web=${{ secrets.ECR_REGISTRY }}/cj-web:latest
+
+            kubectl rollout status deployment/cj-web
