@@ -48,19 +48,19 @@ jobs:
           docker push ${ECR_REGISTRY}/cj-web:${IMAGE_TAG}
           docker push ${ECR_REGISTRY}/cj-web:latest
 
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
+deploy:
+  needs: build
+  runs-on: ubuntu-latest
 
-    steps:
-      - name: Deploy to Kubernetes via SSH
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ec2-user
-          key: ${{ secrets.EC2_KEY }}
-          script: |
-            kubectl set image deployment/cj-web \
-            cj-web=101559246314.dkr.ecr.ap-southeast-2.amazonaws.com/cj-web:latest
+  steps:
+    - name: Deploy to Kubernetes via SSH
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.EC2_HOST }}
+        username: ec2-user
+        key: ${{ secrets.EC2_KEY }}
+        script: |
+          kubectl set image deployment/cj-web \
+          cj-web=101559246314.dkr.ecr.ap-southeast-2.amazonaws.com/cj-web:latest
 
-            kubectl rollout status deployment/cj-web
+          kubectl rollout status deployment/cj-web
