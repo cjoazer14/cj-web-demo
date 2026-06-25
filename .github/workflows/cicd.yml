@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     outputs:
-      image_tag: ${{ steps.setvars.outputs.image_tag }}
+      ecr_registry: ${{ steps.set-vars.outputs.ecr_registry }}
 
     steps:
       - name: Checkout code
@@ -28,39 +28,42 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Set variables
-        id: setvars
+        id: set-vars
         run: |
           echo "IMAGE_TAG=${GITHUB_RUN_NUMBER}" >> $GITHUB_ENV
-          echo "IMAGE_TAG=${GITHUB_RUN_NUMBER}" >> $GITHUB_OUTPUT
           echo "ECR_REGISTRY=${{ steps.login-ecr.outputs.registry }}" >> $GITHUB_ENV
+          echo "ecr_registry=${{ steps.login-ecr.outputs.registry }}" >> $GITHUB_OUTPUT
 
       - name: Build Docker image
         run: |
-          docker build -t cj-web:${IMAGE_TAG} .
+          docker build -t cj-web:${GITHUB_RUN_NUMBER} .
 
       - name: Tag Docker image
         run: |
-          docker tag cj-web:${IMAGE_TAG} ${ECR_REGISTRY}/cj-web:${IMAGE_TAG}
-          docker tag cj-web:${IMAGE_TAG} ${ECR_REGISTRY}/cj-web:latest
+          docker tag cj-web:${GITHUB_RUN_NUMBER} $ECR_REGISTRY/cj-web:${GITHUB_RUN_NUMBER}
+          docker tag cj-web:${GITHUB_RUN_NUMBER} $ECR_REGISTRY/cj-web:latest
 
-      - name: Push to ECR
+      - name: Push Docker image to ECR
         run: |
-          docker push ${ECR_REGISTRY}/cj-web:${IMAGE_TAG}
-          docker push ${ECR_REGISTRY}/cj-web:latest
+          docker push $ECR_REGISTRY/cj-web:${GITHUB_RUN_NUMBER}
+          docker push $ECR_REGISTRY/cj-web:latest
 
-deploy:
-  needs: build
-  runs-on: ubuntu-latest
 
-  steps:
-    - name: Deploy to Kubernetes via SSH
-      uses: appleboy/ssh-action@v1.0.3
-      with:
-        host: ${{ secrets.EC2_HOST }}
-        username: ec2-user
-        key: ${{ secrets.EC2_KEY }}
-        script: |
-          kubectl set image deployment/cj-web \
-          cj-web=101559246314.dkr.ecr.ap-southeast-2.amazonaws.com/cj-web:latest
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
 
-          kubectl rollout status deployment/cj-web
+    steps:
+      - name: Deploy to Kubernetes via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ec2-user
+          key: ${{ secrets.EC2_KEY }}
+          script: |
+            export KUBECONFIG=/home/ec2-user/.kube/config
+
+            kubectl set image deployment/cj-web \
+              cj-web=${{ needs.build.outputs.ecr_registry }}/cj-web:latest
+
+            kubectl rollout status deployment/cj-web
